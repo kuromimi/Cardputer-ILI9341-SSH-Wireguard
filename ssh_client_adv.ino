@@ -27,6 +27,7 @@
  */
 
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <M5Cardputer.h>
 #include <WireGuard-ESP32.h>
 #include <SD.h>
@@ -350,6 +351,29 @@ bool wgStart(const Profile& p, const char* fp) {
     int co = ep.lastIndexOf(':');
     if (co < 0) { bprint("Bad WG endpoint!", C_ERR); delay(2000); return false; }
     configTime(0, 0, "pool.ntp.org", "time.google.com"); delay(800);
+
+    IPAddress endpoint_ip;
+    if (!endpoint_ip.fromString(ep.substring(0, co))) {
+        String domain_name = ep.substring(0, co);
+        int retry = 0;
+        Serial.println(domain_name.c_str());
+        while (!WiFi.hostByName(domain_name.c_str(), endpoint_ip) && retry < 10) {
+            delay(500);
+            retry++;
+        }
+        if (retry >= 10) {
+            bprintf(C_ERR, "DNS Lookup failed:%s", domain_name);
+            delay(2000);
+            return false;
+        }
+    }
+    int endpoint_port = ep.substring(co + 1).toInt();
+    WiFiUDP udp;
+    udp.beginPacket(endpoint_ip, endpoint_port);
+    udp.write(0);
+    udp.endPacket();
+    udp.stop();
+    
     g_prevDefaultNetif = netif_default;
     g_wg = new WireGuard();
     g_wg->begin(tun, p.wg_privkey, ep.substring(0, co).c_str(),
@@ -2068,13 +2092,13 @@ void setup() {
     Serial.println("  ✓ SPI bus initialized");
     bool sdOk = SD.begin(SD_SPI_CS_PIN, sdSPI, 40000000, "/sd", 5, false);
     if(sdOk) {
-      Serial.println("✓ SD CARD: OK");
+      Serial.println("  ✓ SD CARD: OK");
     }else{
       Serial.println("❌ SD CARD INITIALIZATION FAILED!");
     }
 
     if (!externalDisplay.init()) {
-      Serial.println("  ✗ External display initialization FAILED!");
+      Serial.println("  ❌ External display initialization FAILED!");
       Serial.println("  Check connections and power!");
       while (1) delay(1000);
     }
