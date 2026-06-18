@@ -1,6 +1,6 @@
 # SSH Client for Cardputer-adv with ILI9341 LCD panel
 
-This project is based on [AndyAi's ILI9341(320x240) LCD support] (https://github.com/AndyAiCardputer/zx-spectrum-cardputer-ili9341).
+This project is based on [AndyAi's ILI9341(320x240) LCD support](https://github.com/AndyAiCardputer/zx-spectrum-cardputer-ili9341).
 
 <img width="400" ALT="Normal font size" src="https://github.com/user-attachments/assets/d9a4a4ac-293e-44ef-bae2-18f9f969df09" /> 
 <img width="400" ALT="Font size x2" src="https://github.com/user-attachments/assets/dd5ea331-df9a-46d0-938f-1ba8c4fb4dbb" />
