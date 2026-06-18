@@ -419,10 +419,12 @@ void drawList(const LItem* it, int cnt, int sel, int sc,
         return;
     }
     int rows = visRows();
+    externalDisplay.startWrite();
     for (int i = 0; i < rows && (i + sc) < cnt; i++) {
         int idx = i + sc;
         drawRow(it[idx], BODYY + i * LH, idx == sel, (idx == sel) ? marqOff : 0);
     }
+    externalDisplay.endWrite();
 }
 
 void redrawSelRow(const LItem* it, int cnt, int sel, int sc,
@@ -1614,6 +1616,7 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
     };
 
     auto drawRow = [&](int row) {
+        externalDisplay.startWrite();
         externalDisplay.fillRect(0, rowY(row), DW, lh(), C_BG);
         for (int c2 = 0; c2 < tCols; c2++) {
             auto& cell = activeBuf()[row][c2];
@@ -1623,46 +1626,46 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                 externalDisplay.write(cell.ch);
             }
         }
+        externalDisplay.endWrite();
     };
 
     auto redrawAll = [&]() {
+        externalDisplay.startWrite();
         externalDisplay.fillRect(0, TOP, DW, BOT - TOP, C_BG);
         for (int r = 0; r < tRows; r++) drawRow(r);
         externalDisplay.setTextColor(C_FG, C_BG);
+        externalDisplay.endWrite();
     };
 
 
-auto redrawRegion = [&](int rowFrom, int rowTo) {
-    for (int r = rowFrom; r <= rowTo; r++)
-        drawRow(r);   // 既存の1行描画関数をそのまま流用
-};
+    auto redrawRegion = [&](int rowFrom, int rowTo) {
+        externalDisplay.startWrite();
+        for (int r = rowFrom; r <= rowTo; r++)
+            drawRow(r);
+        externalDisplay.endWrite();
+    };
 
-auto scrollRegionUp = [&](int n2, int fromRow = -1) {
-    if (fromRow < 0) fromRow = scrollTop;
-    for (int rep = 0; rep < n2; rep++) {
-        // バッファをずらす（変更なし）
-        for (int r = fromRow; r < scrollBot; r++)
-            memcpy(activeBuf()[r], activeBuf()[r+1], sizeof(TCell)*MAXCOLS);
-        // 最下行をクリア（変更なし）
-        for (int c2 = 0; c2 < tCols; c2++)
-            activeBuf()[scrollBot][c2] = {0, curFg, curBg, false};
-    }
-    // redrawAll();  ← 削除
-    redrawRegion(fromRow, scrollBot);  // ← スクロール領域だけ再描画
-};
+    auto scrollRegionUp = [&](int n2, int fromRow = -1) {
+        if (fromRow < 0) fromRow = scrollTop;
+        for (int rep = 0; rep < n2; rep++) {
+            for (int r = fromRow; r < scrollBot; r++)
+                memcpy(activeBuf()[r], activeBuf()[r+1], sizeof(TCell)*MAXCOLS);
+            for (int c2 = 0; c2 < tCols; c2++)
+                activeBuf()[scrollBot][c2] = {0, curFg, curBg, false};
+        }
+        redrawRegion(fromRow, scrollBot);
+    };
 
-auto scrollRegionDown = [&](int n2, int fromRow = -1) {
-    if (fromRow < 0) fromRow = scrollTop;
-    for (int rep = 0; rep < n2; rep++) {
-        for (int r = scrollBot; r > fromRow; r--)
-            memcpy(activeBuf()[r], activeBuf()[r-1], sizeof(TCell)*MAXCOLS);
-        for (int c2 = 0; c2 < tCols; c2++)
-            activeBuf()[fromRow][c2] = {0, curFg, curBg, false};
-    }
-    // redrawAll();  ← 削除
-    redrawRegion(fromRow, scrollBot);  // ← スクロール領域だけ再描画
-};
-
+    auto scrollRegionDown = [&](int n2, int fromRow = -1) {
+        if (fromRow < 0) fromRow = scrollTop;
+        for (int rep = 0; rep < n2; rep++) {
+            for (int r = scrollBot; r > fromRow; r--)
+                memcpy(activeBuf()[r], activeBuf()[r-1], sizeof(TCell)*MAXCOLS);
+            for (int c2 = 0; c2 < tCols; c2++)
+                activeBuf()[fromRow][c2] = {0, curFg, curBg, false};
+        }
+        redrawRegion(fromRow, scrollBot);
+    };
 
     auto clearBuf = [&](int bufIdx) {
         for (int r = 0; r < MAXROWS; r++)
