@@ -35,10 +35,25 @@
 #include "libssh_esp32.h"
 #include <libssh/libssh.h>
 #include "lwip/sockets.h"
+#include "src/external_display/LGFX_ILI9341.h"  // External ILI9341 display (320x240)
+
+#define TERM_COLS 53
+#define TERM_ROWS 26
+
+// ═══════════════════════════════════════════
+// SD CARD CONFIGURATION
+// ═══════════════════════════════════════════
+#define SD_SPI_SCK_PIN  40
+#define SD_SPI_MISO_PIN 39
+#define SD_SPI_MOSI_PIN 14
+#define SD_SPI_CS_PIN   12
+
+// ✅ External display SPI (shared with SD)
+SPIClass sdSPI(HSPI);
 
 // ── Display ────────────────────────────────────────────────────────────────────
-#define DW       240
-#define DH       135
+#define DW       320
+#define DH       240
 #define TITLEH   20
 #define HINTH    12
 #define BODYY    (TITLEH + 2)
@@ -206,7 +221,7 @@ void drawGearIcon(int cx, int cy, uint16_t col);
 void touchActivity() {
     g_lastAct = millis();
     if (g_dimmed) {
-        M5Cardputer.Display.setBrightness(128);
+        externalDisplay.setBrightness(128);
         g_dimmed = false;
     }
 }
@@ -214,7 +229,7 @@ void touchActivity() {
 void checkScreenTimeout() {
     if (g_cfg.screenTimeoutSec <= 0 || g_dimmed) return;
     if ((millis() - g_lastAct) > (unsigned long)g_cfg.screenTimeoutSec * 1000UL) {
-        M5Cardputer.Display.setBrightness(0);
+        externalDisplay.setBrightness(0);
         g_dimmed = true;
     }
 }
@@ -279,45 +294,45 @@ char waitCh() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void titleBar(const char* t) {
-    M5Cardputer.Display.fillRect(0, 0, DW, TITLEH, C_TITBG);
-    M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setTextColor(C_TITFG, C_TITBG);
-    M5Cardputer.Display.setCursor(4, 2);
-    M5Cardputer.Display.print(t);
-    M5Cardputer.Display.setTextSize(1);
-    M5Cardputer.Display.setTextColor(g_wifiOk ? C_OK : C_DIM, C_TITBG);
-    M5Cardputer.Display.setCursor(DW - 24, 6);
-    M5Cardputer.Display.print(g_wifiOk ? "WiFi" : "----");
+    externalDisplay.fillRect(0, 0, DW, TITLEH, C_TITBG);
+    externalDisplay.setTextSize(2);
+    externalDisplay.setTextColor(C_TITFG, C_TITBG);
+    externalDisplay.setCursor(4, 2);
+    externalDisplay.print(t);
+    externalDisplay.setTextSize(1);
+    externalDisplay.setTextColor(g_wifiOk ? C_OK : C_DIM, C_TITBG);
+    externalDisplay.setCursor(DW - 24, 6);
+    externalDisplay.print(g_wifiOk ? "WiFi" : "----");
 }
 
 void hintBar(const char* h) {
     int y = DH - HINTH;
-    M5Cardputer.Display.fillRect(0, y, DW, HINTH, C_HNTBG);
-    M5Cardputer.Display.setTextSize(1);
-    M5Cardputer.Display.setTextColor(C_HNTFG, C_HNTBG);
-    M5Cardputer.Display.setCursor(3, y + 1);
-    M5Cardputer.Display.print(h);
+    externalDisplay.fillRect(0, y, DW, HINTH, C_HNTBG);
+    externalDisplay.setTextSize(1);
+    externalDisplay.setTextColor(C_HNTFG, C_HNTBG);
+    externalDisplay.setCursor(3, y + 1);
+    externalDisplay.print(h);
 }
 
 void screenInit(const char* t, const char* h) {
-    M5Cardputer.Display.fillScreen(C_BG);
+    externalDisplay.fillScreen(C_BG);
     titleBar(t);
     hintBar(h);
-    M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setTextColor(C_FG, C_BG);
-    M5Cardputer.Display.setCursor(0, BODYY);
+    externalDisplay.setTextSize(2);
+    externalDisplay.setTextColor(C_FG, C_BG);
+    externalDisplay.setCursor(0, BODYY);
 }
 
 void bprint(const char* s, uint16_t col = C_FG) {
     int lim = DH - HINTH - LH;
-    if (M5Cardputer.Display.getCursorY() > lim) {
-        M5Cardputer.Display.scroll(0, -LH);
-        M5Cardputer.Display.fillRect(0, lim, DW, LH, C_BG);
-        M5Cardputer.Display.setCursor(0, lim);
+    if (externalDisplay.getCursorY() > lim) {
+        externalDisplay.scroll(0, -LH);
+        externalDisplay.fillRect(0, lim, DW, LH, C_BG);
+        externalDisplay.setCursor(0, lim);
     }
-    M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setTextColor(col, C_BG);
-    M5Cardputer.Display.println(s);
+    externalDisplay.setTextSize(2);
+    externalDisplay.setTextColor(col, C_BG);
+    externalDisplay.println(s);
 }
 
 void bprintf(uint16_t col, const char* fmt, ...) {
@@ -357,9 +372,9 @@ static int labelCols(bool hasSub) { return hasSub ? 14 : 18; }
 
 void drawRow(const LItem& it, int y, bool hi, int marqOff) {
     uint16_t bg = hi ? C_SELBG : C_BG;
-    if (hi) M5Cardputer.Display.fillRect(0, y, DW, LH, C_SELBG);
+    if (hi) externalDisplay.fillRect(0, y, DW, LH, C_SELBG);
     if (it.dot)
-        M5Cardputer.Display.fillCircle(5, y + LH/2, 3, it.dot);
+        externalDisplay.fillCircle(5, y + LH/2, 3, it.dot);
 
     int maxCols = labelCols(it.sub[0] != '\0');
     int lblLen  = strlen(it.label);
@@ -377,30 +392,30 @@ void drawRow(const LItem& it, int y, bool hi, int marqOff) {
         lbuf[maxCols] = '\0';
     }
 
-    M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setTextColor(hi ? C_SELFG : it.lc, bg);
-    M5Cardputer.Display.setCursor(13, y + 1);
-    M5Cardputer.Display.print(lbuf);
+    externalDisplay.setTextSize(2);
+    externalDisplay.setTextColor(hi ? C_SELFG : it.lc, bg);
+    externalDisplay.setCursor(13, y + 1);
+    externalDisplay.print(lbuf);
 
     if (it.sub[0]) {
         int sw = strlen(it.sub) * 6;
-        M5Cardputer.Display.setTextSize(1);
-        M5Cardputer.Display.setTextColor(C_DIM, bg);
-        M5Cardputer.Display.setCursor(DW - sw - 3, y + 5);
-        M5Cardputer.Display.print(it.sub);
+        externalDisplay.setTextSize(1);
+        externalDisplay.setTextColor(C_DIM, bg);
+        externalDisplay.setCursor(DW - sw - 3, y + 5);
+        externalDisplay.print(it.sub);
     }
 }
 
 void drawList(const LItem* it, int cnt, int sel, int sc,
               const char* title, const char* hint, int marqOff = 0) {
-    M5Cardputer.Display.fillScreen(C_BG);
+    externalDisplay.fillScreen(C_BG);
     titleBar(title);
     hintBar(hint);
     if (cnt == 0) {
-        M5Cardputer.Display.setTextSize(2);
-        M5Cardputer.Display.setTextColor(C_DIM, C_BG);
-        M5Cardputer.Display.setCursor(6, BODYY + 6);
-        M5Cardputer.Display.print("(empty)");
+        externalDisplay.setTextSize(2);
+        externalDisplay.setTextColor(C_DIM, C_BG);
+        externalDisplay.setCursor(6, BODYY + 6);
+        externalDisplay.print("(empty)");
         return;
     }
     int rows = visRows();
@@ -504,19 +519,19 @@ bool yesNo(const char* title, const char* q, bool defYes = false) {
     int sel = defYes ? 0 : 1;
     auto draw = [&]() {
         screenInit(title, " ,/=toggle  Enter=confirm  ,=cancel");
-        M5Cardputer.Display.setTextSize(2);
-        M5Cardputer.Display.setTextColor(C_WARN, C_BG);
-        M5Cardputer.Display.setCursor(4, BODYY + 2);
-        M5Cardputer.Display.print(q);
+        externalDisplay.setTextSize(2);
+        externalDisplay.setTextColor(C_WARN, C_BG);
+        externalDisplay.setCursor(4, BODYY + 2);
+        externalDisplay.print(q);
         int by = BODYY + LH + 12;
         uint16_t yb = (sel==0) ? C_OK  : C_DIM;
         uint16_t nb = (sel==1) ? C_ERR : C_DIM;
-        M5Cardputer.Display.fillRoundRect(18,  by, 84, LH+4, 4, yb);
-        M5Cardputer.Display.fillRoundRect(136, by, 84, LH+4, 4, nb);
-        M5Cardputer.Display.setTextColor(C_FG, yb);
-        M5Cardputer.Display.setCursor(44,  by+2); M5Cardputer.Display.print("YES");
-        M5Cardputer.Display.setTextColor(C_FG, nb);
-        M5Cardputer.Display.setCursor(164, by+2); M5Cardputer.Display.print("NO");
+        externalDisplay.fillRoundRect(18,  by, 84, LH+4, 4, yb);
+        externalDisplay.fillRoundRect(136, by, 84, LH+4, 4, nb);
+        externalDisplay.setTextColor(C_FG, yb);
+        externalDisplay.setCursor(44,  by+2); externalDisplay.print("YES");
+        externalDisplay.setTextColor(C_FG, nb);
+        externalDisplay.setCursor(164, by+2); externalDisplay.print("NO");
     };
     draw();
     while (true) {
@@ -535,35 +550,35 @@ bool yesNo(const char* title, const char* q, bool defYes = false) {
 String typeText(const char* title, const char* prompt,
                 const char* prefill = "", bool hidden = false) {
     screenInit(title, "Enter=done  Bksp=del  ,=cancel");
-    M5Cardputer.Display.setTextSize(1);
-    M5Cardputer.Display.setTextColor(C_DIM, C_BG);
-    M5Cardputer.Display.setCursor(4, BODYY + 2);
-    M5Cardputer.Display.print(prompt);
+    externalDisplay.setTextSize(1);
+    externalDisplay.setTextColor(C_DIM, C_BG);
+    externalDisplay.setCursor(4, BODYY + 2);
+    externalDisplay.print(prompt);
 
     String val = String(prefill);
     int iy = BODYY + LHS + 4;
 
     auto redraw = [&]() {
-        M5Cardputer.Display.fillRect(0, iy, DW, LH + 4, C_BG);
-        M5Cardputer.Display.setTextSize(2);
-        M5Cardputer.Display.setTextColor(C_FG, C_BG);
-        M5Cardputer.Display.setCursor(4, iy);
+        externalDisplay.fillRect(0, iy, DW, LH + 4, C_BG);
+        externalDisplay.setTextSize(2);
+        externalDisplay.setTextColor(C_FG, C_BG);
+        externalDisplay.setCursor(4, iy);
         if (hidden) {
             int len = val.length();
             if (g_cfg.passDisplay == 2) {
-                M5Cardputer.Display.print(val);
+                externalDisplay.print(val);
             } else if (g_cfg.passDisplay == 1) {
                 int show = (len >= 3) ? 3 : len;
                 int hide = len - show;
-                for (int i = 0; i < hide; i++) M5Cardputer.Display.print('*');
-                for (int i = hide; i < len; i++) M5Cardputer.Display.print(val[i]);
+                for (int i = 0; i < hide; i++) externalDisplay.print('*');
+                for (int i = hide; i < len; i++) externalDisplay.print(val[i]);
             } else {
-                for (int i = 0; i < len; i++) M5Cardputer.Display.print('*');
+                for (int i = 0; i < len; i++) externalDisplay.print('*');
             }
         } else {
-            M5Cardputer.Display.print(val);
+            externalDisplay.print(val);
         }
-        M5Cardputer.Display.fillRect(M5Cardputer.Display.getCursorX(), iy, 8, LH, C_TITFG);
+        externalDisplay.fillRect(externalDisplay.getCursorX(), iy, 8, LH, C_TITFG);
     };
     redraw();
 
@@ -613,7 +628,7 @@ void loadSettings() {
         else if (k=="pass_display")   g_cfg.passDisplay      = (v>=0&&v<=2)?v:0;
     }
     f.close();
-    M5Cardputer.Display.setBrightness(g_cfg.brightness);
+    externalDisplay.setBrightness(g_cfg.brightness);
 }
 
 void saveSettings() {
@@ -800,14 +815,14 @@ bool pickWGConf(Profile& p) {
 
 void profileCard(const Profile& p) {
     screenInit(p.name, "Enter=connect  E=edit  < back");
-    M5Cardputer.Display.setTextSize(1);
+    externalDisplay.setTextSize(1);
     int y = BODYY + 2;
     auto row = [&](const char* label, const char* val, uint16_t vc = C_FG) {
-        M5Cardputer.Display.setTextColor(C_DIM, C_BG);
-        M5Cardputer.Display.setCursor(4, y);
-        M5Cardputer.Display.print(label);
-        M5Cardputer.Display.setTextColor(vc, C_BG);
-        M5Cardputer.Display.print(val);
+        externalDisplay.setTextColor(C_DIM, C_BG);
+        externalDisplay.setCursor(4, y);
+        externalDisplay.print(label);
+        externalDisplay.setTextColor(vc, C_BG);
+        externalDisplay.print(val);
         y += LHS + 2;
     };
     char portBuf[8]; snprintf(portBuf, sizeof(portBuf), "%d", p.port);
@@ -1055,9 +1070,9 @@ void doConnect(const String& ssid, const String& pw) {
     bprintf(C_DIM,"Connecting: %s", ssbuf);
     WiFi.begin(ssid.c_str(), pw.c_str());
     for (int i=0; i<30 && WiFi.status()!=WL_CONNECTED; i++) {
-        vTaskDelay(400/portTICK_PERIOD_MS); M5Cardputer.Display.print('.');
+        vTaskDelay(400/portTICK_PERIOD_MS); externalDisplay.print('.');
     }
-    M5Cardputer.Display.println();
+    externalDisplay.println();
     if (WiFi.status()==WL_CONNECTED) {
         g_wifiOk=true;
         strncpy(g_ssid, ssid.c_str(), sizeof(g_ssid)-1);
@@ -1172,7 +1187,7 @@ void runSettings() {
                     int vals[] = { 64,128,192,255 };
                     int cur = 1; for (int i=0;i<4;i++) if(abs(vals[i]-g_cfg.brightness)<32){cur=i;break;}
                     int p = pickStr(sc, 4, "Brightness", cur);
-                    if (p >= 0) { g_cfg.brightness=vals[p]; M5Cardputer.Display.setBrightness(g_cfg.brightness); saveSettings(); }
+                    if (p >= 0) { g_cfg.brightness=vals[p]; externalDisplay.setBrightness(g_cfg.brightness); saveSettings(); }
                 }
             }
 
@@ -1264,34 +1279,34 @@ void runSettings() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void drawWifiIcon(int cx, int cy, uint16_t col) {
-    M5Cardputer.Display.fillCircle(cx, cy, 3, col);
-    M5Cardputer.Display.drawArc(cx, cy,  8,  6, 225, 315, col);
-    M5Cardputer.Display.drawArc(cx, cy, 14, 12, 225, 315, col);
-    M5Cardputer.Display.drawArc(cx, cy, 20, 18, 225, 315, col);
+    externalDisplay.fillCircle(cx, cy, 3, col);
+    externalDisplay.drawArc(cx, cy,  8,  6, 225, 315, col);
+    externalDisplay.drawArc(cx, cy, 14, 12, 225, 315, col);
+    externalDisplay.drawArc(cx, cy, 20, 18, 225, 315, col);
 }
 
 void drawSshIcon(int cx, int cy, uint16_t col, uint16_t bg) {
-    M5Cardputer.Display.drawRoundRect(cx-22, cy-12, 44, 26, 4, col);
-    M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setTextColor(col, bg);
-    M5Cardputer.Display.setCursor(cx-18, cy-8); M5Cardputer.Display.print(">_");
+    externalDisplay.drawRoundRect(cx-22, cy-12, 44, 26, 4, col);
+    externalDisplay.setTextSize(2);
+    externalDisplay.setTextColor(col, bg);
+    externalDisplay.setCursor(cx-18, cy-8); externalDisplay.print(">_");
 }
 
 void drawGearIcon(int cx, int cy, uint16_t col) {
-    M5Cardputer.Display.drawCircle(cx, cy, 12, col);
-    M5Cardputer.Display.drawCircle(cx, cy, 5,  col);
+    externalDisplay.drawCircle(cx, cy, 12, col);
+    externalDisplay.drawCircle(cx, cy, 5,  col);
     for (int a = 0; a < 360; a += 60) {
         float r = a * 3.14159f / 180.0f;
         int x1 = cx + (int)(12 * cosf(r));
         int y1 = cy + (int)(12 * sinf(r));
         int x2 = cx + (int)(16 * cosf(r));
         int y2 = cy + (int)(16 * sinf(r));
-        M5Cardputer.Display.drawLine(x1, y1, x2, y2, col);
+        externalDisplay.drawLine(x1, y1, x2, y2, col);
     }
 }
 
 void drawHome(int sel) {
-    M5Cardputer.Display.fillScreen(C_BG);
+    externalDisplay.fillScreen(C_BG);
 
     uint16_t tileColors[3] = {C_WIFI, C_PROF, C_SETT};
     const char* labels[] = {"WiFi", "Profiles", "Settings"};
@@ -1300,19 +1315,19 @@ void drawHome(int sel) {
     if (sel > 0) {
         int ax = DW/2;
         for (int i = 0; i < 7; i++)
-            M5Cardputer.Display.drawLine(ax-i, 6+i, ax+i, 6+i, C_DIM);
+            externalDisplay.drawLine(ax-i, 6+i, ax+i, 6+i, C_DIM);
     }
     if (sel < 2) {
         int ax = DW/2;
         for (int i = 0; i < 7; i++)
-            M5Cardputer.Display.drawLine(ax-(6-i), 104+i, ax+(6-i), 104+i, C_DIM);
+            externalDisplay.drawLine(ax-(6-i), 104+i, ax+(6-i), 104+i, C_DIM);
     }
 
     for (int i = 0; i < 3; i++) {
         int dx = DW - 8;
         int dy = 58 - 16 + i*16;
-        if (i == sel) M5Cardputer.Display.fillCircle(dx, dy, 4, col);
-        else          M5Cardputer.Display.drawCircle(dx, dy, 3, C_DIM);
+        if (i == sel) externalDisplay.fillCircle(dx, dy, 4, col);
+        else          externalDisplay.drawCircle(dx, dy, 3, C_DIM);
     }
 
     int cx = DW / 2;
@@ -1321,25 +1336,25 @@ void drawHome(int sel) {
     else if (sel == 1) drawSshIcon(cx, cy, col, C_BG);
     else               drawGearIcon(cx, cy, col);
 
-    M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setTextColor(col, C_BG);
+    externalDisplay.setTextSize(2);
+    externalDisplay.setTextColor(col, C_BG);
     int lw = strlen(labels[sel]) * 12;
-    M5Cardputer.Display.setCursor(cx - lw/2, cy + 22);
-    M5Cardputer.Display.print(labels[sel]);
+    externalDisplay.setCursor(cx - lw/2, cy + 22);
+    externalDisplay.print(labels[sel]);
 
     const int SHBAR = 18;
     int y = DH - SHBAR;
-    M5Cardputer.Display.fillRect(0, y, DW, SHBAR, C_HNTBG);
-    M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setCursor(3, y + 1);
+    externalDisplay.fillRect(0, y, DW, SHBAR, C_HNTBG);
+    externalDisplay.setTextSize(2);
+    externalDisplay.setCursor(3, y + 1);
     if (g_wifiOk) {
         char ssbuf[18]; strncpy(ssbuf, g_ssid, 17); ssbuf[17]='\0';
         char hbuf[36]; snprintf(hbuf, sizeof(hbuf), " WiFi: %s", ssbuf);
-        M5Cardputer.Display.setTextColor(C_OK, C_HNTBG);
-        M5Cardputer.Display.print(hbuf);
+        externalDisplay.setTextColor(C_OK, C_HNTBG);
+        externalDisplay.print(hbuf);
     } else {
-        M5Cardputer.Display.setTextColor(C_ERR, C_HNTBG);
-        M5Cardputer.Display.print(" Not connected");
+        externalDisplay.setTextColor(C_ERR, C_HNTBG);
+        externalDisplay.print(" Not connected");
     }
 }
 
@@ -1409,8 +1424,8 @@ static void sshConnectTask(void* arg) {
     }
 
     ctx->ch = ssh_channel_new(ctx->sess);
-    int termCols = (g_cfg.termFontSize == 2) ? 20 : 40;
-    int termRows = (g_cfg.termFontSize == 2) ?  7 : 14;
+    int termCols = (g_cfg.termFontSize == 2) ? TERM_COLS/2 : TERM_COLS;
+    int termRows = (g_cfg.termFontSize == 2) ? TERM_ROWS/2 : TERM_ROWS;
 
     if (!ctx->ch ||
         ssh_channel_open_session(ctx->ch) != SSH_OK ||
@@ -1506,7 +1521,7 @@ void runConnect(int idx) {
             }
         }
         vTaskDelay(200 / portTICK_PERIOD_MS);
-        M5Cardputer.Display.print('.');
+        externalDisplay.print('.');
     }
     g_sshTask = nullptr;
 
@@ -1521,7 +1536,7 @@ void runConnect(int idx) {
     ssh_session sess = g_sshCtx.sess;
     ssh_channel ch   = g_sshCtx.ch;
 
-    M5Cardputer.Display.fillScreen(C_BG);
+    externalDisplay.fillScreen(C_BG);
     titleBar(p.name);
 
     runSSHTerm(sess, ch);
@@ -1562,8 +1577,8 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
     const int TOP  = TITLEH + 2;
     const int BOT  = DH - HINTH;
 
-    const int MAXCOLS = 40;
-    const int MAXROWS = 14;
+    const int MAXCOLS = TERM_COLS;
+    const int MAXROWS = TERM_ROWS;
 
     static TCell tbuf[2][MAXROWS][MAXCOLS];
     static int   tcx, tcy;
@@ -1573,8 +1588,8 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
     static bool  altScreen;
 
     auto lh       = [&]() { return g_cfg.termFontSize * 8; };
-    auto termCols = [&]() { return (g_cfg.termFontSize == 2) ? 20 : 40; };
-    auto termRows = [&]() { return (g_cfg.termFontSize == 2) ?  7 : 14; };
+    auto termCols = [&]() { return (g_cfg.termFontSize == 2) ? TERM_COLS/2 : TERM_COLS; };
+    auto termRows = [&]() { return (g_cfg.termFontSize == 2) ? TERM_ROWS/2 : TERM_ROWS; };
     auto cw       = [&]() { return g_cfg.termFontSize * 6; };
     auto rowY     = [&](int r) { return TOP + r * lh(); };
     auto activeBuf= [&]() -> TCell(*)[MAXCOLS] { return tbuf[altScreen ? 1 : 0]; };
@@ -1590,55 +1605,64 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
     auto drawCell = [&](int col, int row) {
         auto& cell = activeBuf()[row][col];
         int px = col * cw(), py = rowY(row);
-        M5Cardputer.Display.fillRect(px, py, cw(), lh(), cell.bg);
+        externalDisplay.fillRect(px, py, cw(), lh(), cell.bg);
         if (cell.ch && cell.ch != ' ') {
-            M5Cardputer.Display.setTextColor(cell.fg, cell.bg);
-            M5Cardputer.Display.setCursor(px, py);
-            M5Cardputer.Display.write(cell.ch);
+            externalDisplay.setTextColor(cell.fg, cell.bg);
+            externalDisplay.setCursor(px, py);
+            externalDisplay.write(cell.ch);
         }
     };
 
     auto drawRow = [&](int row) {
-        M5Cardputer.Display.fillRect(0, rowY(row), DW, lh(), C_BG);
+        externalDisplay.fillRect(0, rowY(row), DW, lh(), C_BG);
         for (int c2 = 0; c2 < tCols; c2++) {
             auto& cell = activeBuf()[row][c2];
             if (cell.ch && cell.ch != ' ') {
-                M5Cardputer.Display.setTextColor(cell.fg, cell.bg);
-                M5Cardputer.Display.setCursor(c2 * cw(), rowY(row));
-                M5Cardputer.Display.write(cell.ch);
+                externalDisplay.setTextColor(cell.fg, cell.bg);
+                externalDisplay.setCursor(c2 * cw(), rowY(row));
+                externalDisplay.write(cell.ch);
             }
         }
     };
 
     auto redrawAll = [&]() {
-        M5Cardputer.Display.fillRect(0, TOP, DW, BOT - TOP, C_BG);
+        externalDisplay.fillRect(0, TOP, DW, BOT - TOP, C_BG);
         for (int r = 0; r < tRows; r++) drawRow(r);
-        M5Cardputer.Display.setTextColor(C_FG, C_BG);
+        externalDisplay.setTextColor(C_FG, C_BG);
     };
 
-    auto scrollRegionUp = [&](int n2, int fromRow = -1) {
-        if (fromRow < 0) fromRow = scrollTop;
-        for (int rep = 0; rep < n2; rep++) {
-            for (int r = fromRow; r < scrollBot; r++)
-                memcpy(activeBuf()[r], activeBuf()[r+1], sizeof(TCell)*MAXCOLS);
-            memset(activeBuf()[scrollBot], 0, sizeof(TCell)*MAXCOLS);
-            for (int c2 = 0; c2 < tCols; c2++)
-                activeBuf()[scrollBot][c2] = {0, curFg, curBg, false};
-        }
-        redrawAll();
-    };
 
-    auto scrollRegionDown = [&](int n2, int fromRow = -1) {
-        if (fromRow < 0) fromRow = scrollTop;
-        for (int rep = 0; rep < n2; rep++) {
-            for (int r = scrollBot; r > fromRow; r--)
-                memcpy(activeBuf()[r], activeBuf()[r-1], sizeof(TCell)*MAXCOLS);
-            memset(activeBuf()[fromRow], 0, sizeof(TCell)*MAXCOLS);
-            for (int c2 = 0; c2 < tCols; c2++)
-                activeBuf()[fromRow][c2] = {0, curFg, curBg, false};
-        }
-        redrawAll();
-    };
+auto redrawRegion = [&](int rowFrom, int rowTo) {
+    for (int r = rowFrom; r <= rowTo; r++)
+        drawRow(r);   // 既存の1行描画関数をそのまま流用
+};
+
+auto scrollRegionUp = [&](int n2, int fromRow = -1) {
+    if (fromRow < 0) fromRow = scrollTop;
+    for (int rep = 0; rep < n2; rep++) {
+        // バッファをずらす（変更なし）
+        for (int r = fromRow; r < scrollBot; r++)
+            memcpy(activeBuf()[r], activeBuf()[r+1], sizeof(TCell)*MAXCOLS);
+        // 最下行をクリア（変更なし）
+        for (int c2 = 0; c2 < tCols; c2++)
+            activeBuf()[scrollBot][c2] = {0, curFg, curBg, false};
+    }
+    // redrawAll();  ← 削除
+    redrawRegion(fromRow, scrollBot);  // ← スクロール領域だけ再描画
+};
+
+auto scrollRegionDown = [&](int n2, int fromRow = -1) {
+    if (fromRow < 0) fromRow = scrollTop;
+    for (int rep = 0; rep < n2; rep++) {
+        for (int r = scrollBot; r > fromRow; r--)
+            memcpy(activeBuf()[r], activeBuf()[r-1], sizeof(TCell)*MAXCOLS);
+        for (int c2 = 0; c2 < tCols; c2++)
+            activeBuf()[fromRow][c2] = {0, curFg, curBg, false};
+    }
+    // redrawAll();  ← 削除
+    redrawRegion(fromRow, scrollBot);  // ← スクロール領域だけ再描画
+};
+
 
     auto clearBuf = [&](int bufIdx) {
         for (int r = 0; r < MAXROWS; r++)
@@ -1664,12 +1688,12 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
     tcx = tcy = savedCx = savedCy = 0;
     curFg = C_FG; curBg = C_BG; curBold = false;
     clearBuf(0); clearBuf(1);
-    M5Cardputer.Display.fillRect(0, TOP, DW, BOT - TOP, C_BG);
+    externalDisplay.fillRect(0, TOP, DW, BOT - TOP, C_BG);
 
     auto showHint = [&]() {
         hintBar("G0/Fn+Q=quit  Fn+;.,/=arrows  Fn+F=font");
-        M5Cardputer.Display.setTextSize(g_cfg.termFontSize);
-        M5Cardputer.Display.setTextColor(C_FG, C_BG);
+        externalDisplay.setTextSize(g_cfg.termFontSize);
+        externalDisplay.setTextColor(C_FG, C_BG);
     };
     showHint();
 
@@ -1694,7 +1718,7 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
 
         if (g_cfg.screenTimeoutSec > 0 && !g_dimmed &&
             (millis() - g_lastAct) > (unsigned long)g_cfg.screenTimeoutSec * 1000UL) {
-            M5Cardputer.Display.setBrightness(0);
+            externalDisplay.setBrightness(0);
             g_dimmed = true;
         }
 
@@ -1717,7 +1741,7 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                             tCols = termCols(); tRows = termRows();
                             scrollTop = 0; scrollBot = tRows - 1;
                             clearBuf(0); clearBuf(1);
-                            M5Cardputer.Display.fillRect(0, TOP, DW, BOT - TOP, C_BG);
+                            externalDisplay.fillRect(0, TOP, DW, BOT - TOP, C_BG);
                             showHint();
                             ssh_channel_change_pty_size(ch, tCols, tRows);
                         }
@@ -1824,23 +1848,23 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                                 int arg=P1(0);
                                 if (arg==0) {
                                     for(int x=tcx;x<tCols;x++) activeBuf()[tcy][x]={0,curFg,curBg,false};
-                                    M5Cardputer.Display.fillRect(tcx*cw(), rowY(tcy), DW-tcx*cw(), lh(), curBg);
+                                    externalDisplay.fillRect(tcx*cw(), rowY(tcy), DW-tcx*cw(), lh(), curBg);
                                     for(int r=tcy+1;r<tRows;r++){
                                         memset(activeBuf()[r],0,sizeof(TCell)*MAXCOLS);
                                         for(int x=0;x<tCols;x++) activeBuf()[r][x]={0,curFg,curBg,false};
-                                        M5Cardputer.Display.fillRect(0,rowY(r),DW,lh(),curBg);
+                                        externalDisplay.fillRect(0,rowY(r),DW,lh(),curBg);
                                     }
                                 } else if (arg==1) {
                                     for(int r=0;r<tcy;r++){
                                         memset(activeBuf()[r],0,sizeof(TCell)*MAXCOLS);
                                         for(int x=0;x<tCols;x++) activeBuf()[r][x]={0,curFg,curBg,false};
-                                        M5Cardputer.Display.fillRect(0,rowY(r),DW,lh(),curBg);
+                                        externalDisplay.fillRect(0,rowY(r),DW,lh(),curBg);
                                     }
                                     for(int x=0;x<=tcx;x++) activeBuf()[tcy][x]={0,curFg,curBg,false};
-                                    M5Cardputer.Display.fillRect(0,rowY(tcy),(tcx+1)*cw(),lh(),curBg);
+                                    externalDisplay.fillRect(0,rowY(tcy),(tcx+1)*cw(),lh(),curBg);
                                 } else {
                                     clearBuf(altScreen?1:0);
-                                    M5Cardputer.Display.fillRect(0,TOP,DW,BOT-TOP,curBg);
+                                    externalDisplay.fillRect(0,TOP,DW,BOT-TOP,curBg);
                                     tcx=tcy=0;
                                 }
                                 break;
@@ -1849,13 +1873,13 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                                 int arg=P1(0);
                                 if (arg==0) {
                                     for(int x=tcx;x<tCols;x++) activeBuf()[tcy][x]={0,curFg,curBg,false};
-                                    M5Cardputer.Display.fillRect(tcx*cw(),rowY(tcy),DW-tcx*cw(),lh(),curBg);
+                                    externalDisplay.fillRect(tcx*cw(),rowY(tcy),DW-tcx*cw(),lh(),curBg);
                                 } else if (arg==1) {
                                     for(int x=0;x<=tcx;x++) activeBuf()[tcy][x]={0,curFg,curBg,false};
-                                    M5Cardputer.Display.fillRect(0,rowY(tcy),(tcx+1)*cw(),lh(),curBg);
+                                    externalDisplay.fillRect(0,rowY(tcy),(tcx+1)*cw(),lh(),curBg);
                                 } else {
                                     for(int x=0;x<tCols;x++) activeBuf()[tcy][x]={0,curFg,curBg,false};
-                                    M5Cardputer.Display.fillRect(0,rowY(tcy),DW,lh(),curBg);
+                                    externalDisplay.fillRect(0,rowY(tcy),DW,lh(),curBg);
                                 }
                                 break;
                             }
@@ -1908,7 +1932,7 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                                     else if (v>=90 && v<=97) curFg=ansiCol[v-90+8];
                                     else if (v>=100&&v<=107) curBg=ansiCol[v-100+8];
                                 }
-                                M5Cardputer.Display.setTextColor(curFg, curBg);
+                                externalDisplay.setTextColor(curFg, curBg);
                                 break;
                             }
                             default: break;
@@ -1948,12 +1972,12 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                 }
                 if (c2 == 0x08) {
                     if(tcx>0){tcx--; activeBuf()[tcy][tcx]={0,curFg,curBg,false};
-                    M5Cardputer.Display.fillRect(tcx*cw(),rowY(tcy),cw(),lh(),curBg);}
+                    externalDisplay.fillRect(tcx*cw(),rowY(tcy),cw(),lh(),curBg);}
                     continue;
                 }
                 if (c2 == 0x7F) {
                     if(tcx>0){tcx--; activeBuf()[tcy][tcx]={0,curFg,curBg,false};
-                    M5Cardputer.Display.fillRect(tcx*cw(),rowY(tcy),cw(),lh(),curBg);}
+                    externalDisplay.fillRect(tcx*cw(),rowY(tcy),cw(),lh(),curBg);}
                     continue;
                 }
                 if (c2 == '\t') {
@@ -2018,22 +2042,52 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void setup() {
+    Serial.begin(115200);
+    delay(500);
+
+    // Set CS pins HIGH before initialization
+    pinMode(LCD_CS, OUTPUT);
+    pinMode(SD_CS, OUTPUT);
+    digitalWrite(LCD_CS, HIGH);
+    digitalWrite(SD_CS, HIGH);
+    Serial.println("  ✓ CS pins set HIGH");
+
     auto cfg=M5.config();
     M5Cardputer.begin(cfg,true);
-    M5Cardputer.Display.setRotation(1);
-    M5Cardputer.Display.fillScreen(C_BG);
-    M5Cardputer.Display.setBrightness(128);
-    Serial.begin(115200);
+    Serial.println("  ✓ M5Cardputer initialized");
+    M5Cardputer.Display.setBrightness(0); 
+    Serial.println("  ✓ Built-in display backlight: DISABLED");
 
-    M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setTextColor(C_TITFG,C_BG);
-    M5Cardputer.Display.setCursor(44,40); M5Cardputer.Display.print("SSH Client");
-    M5Cardputer.Display.setTextSize(1);
-    M5Cardputer.Display.setTextColor(C_DIM,C_BG);
-    M5Cardputer.Display.setCursor(70,64); M5Cardputer.Display.print("Cardputer-Adv");
+    // Initialize SPI bus FIRST (before LCD, like in NES project)
+    Serial.println("\nInitializing SPI bus (HSPI/SPI3_HOST)...");
+    lcd_quiesce();
+    sdSPI.begin(SD_SPI_SCK_PIN, SD_SPI_MISO_PIN, SD_SPI_MOSI_PIN, SD_SPI_CS_PIN);
+    Serial.println("  ✓ SPI bus initialized");
+    bool sdOk = SD.begin(SD_SPI_CS_PIN, sdSPI, 40000000, "/sd", 5, false);
+    if(sdOk) {
+      Serial.println("✓ SD CARD: OK");
+    }else{
+      Serial.println("❌ SD CARD INITIALIZATION FAILED!");
+    }
+
+    if (!externalDisplay.init()) {
+      Serial.println("  ✗ External display initialization FAILED!");
+      Serial.println("  Check connections and power!");
+      while (1) delay(1000);
+    }
+    externalDisplay.setRotation(3);
+    externalDisplay.setColorDepth(16);  // RGB565 native for ILI9341
+    externalDisplay.fillScreen(C_BG);
+    externalDisplay.setBrightness(128);
+
+    externalDisplay.setTextSize(2);
+    externalDisplay.setTextColor(C_TITFG,C_BG);
+    externalDisplay.setCursor(44,40); externalDisplay.print("SSH Client");
+    externalDisplay.setTextSize(1);
+    externalDisplay.setTextColor(C_DIM,C_BG);
+    externalDisplay.setCursor(70,64); externalDisplay.print("Cardputer-Adv");
     delay(400);
 
-    bool sdOk=SD.begin(M5.getPin(m5::pin_name_t::sd_spi_ss));
     if (sdOk) {
         if (!SD.exists("/SSHAdv"))    SD.mkdir("/SSHAdv");
         if (!SD.exists(P_WG))        SD.mkdir(P_WG);
@@ -2041,23 +2095,23 @@ void setup() {
         loadUsers();
         loadSettings();
         if (g_cfg.autoConnect && loadWifi()) {
-            M5Cardputer.Display.setTextSize(1);
-            M5Cardputer.Display.setTextColor(C_DIM,C_BG);
-            M5Cardputer.Display.setCursor(4,90);
-            M5Cardputer.Display.printf("WiFi: %s ",g_ssid);
+            externalDisplay.setTextSize(1);
+            externalDisplay.setTextColor(C_DIM,C_BG);
+            externalDisplay.setCursor(4,90);
+            externalDisplay.printf("WiFi: %s ",g_ssid);
             WiFi.begin(g_ssid,g_wpass);
             for (int i=0;i<20&&WiFi.status()!=WL_CONNECTED;i++) {
                 vTaskDelay(300/portTICK_PERIOD_MS);
-                M5Cardputer.Display.print('.');
+                externalDisplay.print('.');
             }
             g_wifiOk=(WiFi.status()==WL_CONNECTED);
-            if (g_wifiOk) M5Cardputer.Display.print(" OK");
+            if (g_wifiOk) externalDisplay.print(" OK");
         }
     } else {
-        M5Cardputer.Display.setTextSize(1);
-        M5Cardputer.Display.setTextColor(C_ERR,C_BG);
-        M5Cardputer.Display.setCursor(4,90);
-        M5Cardputer.Display.print("SD mount failed!");
+        externalDisplay.setTextSize(1);
+        externalDisplay.setTextColor(C_ERR,C_BG);
+        externalDisplay.setCursor(4,90);
+        externalDisplay.print("SD mount failed!");
         delay(2000);
     }
 
