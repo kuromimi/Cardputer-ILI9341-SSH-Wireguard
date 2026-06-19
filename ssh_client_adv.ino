@@ -223,7 +223,7 @@ void drawGearIcon(int cx, int cy, uint16_t col);
 void touchActivity() {
     g_lastAct = millis();
     if (g_dimmed) {
-        externalDisplay.setBrightness(128);
+        externalDisplay.setBrightness(g_cfg.brightness);
         g_dimmed = false;
     }
 }
@@ -1210,8 +1210,8 @@ void runSettings() {
                     int p = pickStr(sc, 7, "Screen Dim", cur);
                     if (p >= 0) { g_cfg.screenTimeoutSec = vals[p]; saveSettings(); }
                 } else if (ch == 1) {
-                    const char* sc[] = { "25%","50%","75%","100%" };
-                    int vals[] = { 64,128,192,255 };
+                    const char* sc[] = { "10%","25%","50%","75%","100%" };
+                    int vals[] = { 26,64,128,192,255 };
                     int cur = 1; for (int i=0;i<4;i++) if(abs(vals[i]-g_cfg.brightness)<32){cur=i;break;}
                     int p = pickStr(sc, 4, "Brightness", cur);
                     if (p >= 0) { g_cfg.brightness=vals[p]; externalDisplay.setBrightness(g_cfg.brightness); saveSettings(); }
@@ -1300,10 +1300,7 @@ void runSettings() {
     }
 }
 
-void runQuit() {
-  pinMode(4, OUTPUT);
-  digitalWrite(4, LOW);   // GPIO4=LCD's backlight OFF
-  
+void runQuit() {  
   esp_sleep_enable_timer_wakeup(1000); // 1ms
   esp_deep_sleep_start();
 }
@@ -2121,15 +2118,10 @@ void setup() {
       Serial.println("  ❌ External display initialization FAILED!");
       Serial.println("  Check connections and power!");
       while (1) delay(1000);
-    }
-
-    pinMode(4, OUTPUT);
-    digitalWrite(4, HIGH);   // GPIO4=LCD's backlight ON
-    
+    }    
     externalDisplay.setRotation(3);
     externalDisplay.setColorDepth(16);  // RGB565 native for ILI9341
     externalDisplay.fillScreen(C_BG);
-    externalDisplay.setBrightness(128);
 
     externalDisplay.setTextSize(2);
     externalDisplay.setTextColor(C_TITFG,C_BG);
