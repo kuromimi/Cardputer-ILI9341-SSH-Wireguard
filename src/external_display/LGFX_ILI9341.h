@@ -58,6 +58,7 @@ protected:
 class LGFX_ILI9341 : public lgfx::v1::LGFX_Device {
     Panel_ILI9341_Local panel;
     lgfx::v1::Bus_SPI bus;
+    lgfx::Light_PWM light;
 
 public:
     LGFX_ILI9341() {
@@ -97,6 +98,14 @@ public:
         p.dummy_read_bits = 1;
         panel.config(p);
 
+		auto l = light.config();
+		l.pin_bl = 4;          // GPIO4
+		l.invert = false;      // HIGH = ON
+		l.freq = 12000;        // 10 ~ 20kHz
+		l.pwm_channel = 7;
+		light.config(l);
+		panel.setLight(&light);
+
         setPanel(&panel);
     }
 };
@@ -110,3 +119,4 @@ inline void lcd_quiesce() {
 }
 
 #endif // LGFX_ILI9341_H
+
