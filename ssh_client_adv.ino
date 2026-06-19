@@ -1212,8 +1212,8 @@ void runSettings() {
                 } else if (ch == 1) {
                     const char* sc[] = { "10%","25%","50%","75%","100%" };
                     int vals[] = { 26,64,128,192,255 };
-                    int cur = 1; for (int i=0;i<4;i++) if(abs(vals[i]-g_cfg.brightness)<32){cur=i;break;}
-                    int p = pickStr(sc, 4, "Brightness", cur);
+                    int cur = 1; for (int i=0;i<5;i++) if(abs(vals[i]-g_cfg.brightness)<32){cur=i;break;}
+                    int p = pickStr(sc, 5, "Brightness", cur);
                     if (p >= 0) { g_cfg.brightness=vals[p]; externalDisplay.setBrightness(g_cfg.brightness); saveSettings(); }
                 }
             }
