@@ -1,7 +1,8 @@
 # SSH Client for Cardputer-adv with ILI9341 LCD panel
 SSH client on Cardputer-Adv with 2.8" ILI9341 LCD panel (320x240).
-<img width="400" ALT="Normal font size" src="https://github.com/user-attachments/assets/d9a4a4ac-293e-44ef-bae2-18f9f969df09" /> 
-<img width="400" ALT="Font size x2" src="https://github.com/user-attachments/assets/dd5ea331-df9a-46d0-938f-1ba8c4fb4dbb" />
+
+<img width="300" ALT="Normal font size" src="https://github.com/user-attachments/assets/d9a4a4ac-293e-44ef-bae2-18f9f969df09" /> 
+<img width="300" ALT="Font size x2" src="https://github.com/user-attachments/assets/dd5ea331-df9a-46d0-938f-1ba8c4fb4dbb" />
 
 This project is based on:
 - Blaž Pivk [M5-SSH-Wireguard](https://github.com/bpivk/M5-SSH-Wireguard)
