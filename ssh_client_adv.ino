@@ -78,6 +78,7 @@ SPIClass sdSPI(HSPI);
 #define C_WIFI   0x07FFu
 #define C_PROF   0xFD20u
 #define C_SETT   0x632Cu
+#define C_QUIT   0x45C0u
 
 // ── Limits ─────────────────────────────────────────────────────────────────────
 #define MAX_PROF  20
@@ -1299,6 +1300,14 @@ void runSettings() {
     }
 }
 
+void runQuit() {
+  pinMode(4, OUTPUT);
+  digitalWrite(4, LOW);   // GPIO4=LCD's backlight OFF
+  
+  esp_sleep_enable_timer_wakeup(1000); // 1ms
+  esp_deep_sleep_start();
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  HOME SCREEN
@@ -1331,11 +1340,20 @@ void drawGearIcon(int cx, int cy, uint16_t col) {
     }
 }
 
+void drawQuitIcon(int cx, int cy, uint16_t col) {
+    externalDisplay.drawLine(cx - 10, cy - 10, cx + 2,  cy - 10, col);
+    externalDisplay.drawLine(cx - 10, cy - 10, cx - 10, cy + 10, col);
+    externalDisplay.drawLine(cx - 10, cy + 10, cx + 2,  cy + 10, col);
+    externalDisplay.drawLine(cx - 4,  cy,     cx + 10, cy,     col);
+    externalDisplay.drawLine(cx + 10, cy,     cx + 5,  cy - 5, col);
+    externalDisplay.drawLine(cx + 10, cy,     cx + 5,  cy + 5, col);
+}
+
 void drawHome(int sel) {
     externalDisplay.fillScreen(C_BG);
 
-    uint16_t tileColors[3] = {C_WIFI, C_PROF, C_SETT};
-    const char* labels[] = {"WiFi", "Profiles", "Settings"};
+    uint16_t tileColors[4] = {C_WIFI, C_PROF, C_SETT, C_QUIT};
+    const char* labels[] = {"WiFi", "Profiles", "Settings", "Quit"};
     uint16_t col = tileColors[sel];
 
     if (sel > 0) {
@@ -1343,13 +1361,13 @@ void drawHome(int sel) {
         for (int i = 0; i < 7; i++)
             externalDisplay.drawLine(ax-i, 6+i, ax+i, 6+i, C_DIM);
     }
-    if (sel < 2) {
+    if (sel < 3) {
         int ax = DW/2;
         for (int i = 0; i < 7; i++)
             externalDisplay.drawLine(ax-(6-i), 104+i, ax+(6-i), 104+i, C_DIM);
     }
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         int dx = DW - 8;
         int dy = 58 - 16 + i*16;
         if (i == sel) externalDisplay.fillCircle(dx, dy, 4, col);
@@ -1360,7 +1378,8 @@ void drawHome(int sel) {
     int cy = 47;
     if (sel == 0)      drawWifiIcon(cx, cy, col);
     else if (sel == 1) drawSshIcon(cx, cy, col, C_BG);
-    else               drawGearIcon(cx, cy, col);
+    else if (sel == 2) drawGearIcon(cx, cy, col);
+    else               drawQuitIcon(cx, cy, col);
 
     externalDisplay.setTextSize(2);
     externalDisplay.setTextColor(col, C_BG);
@@ -1390,11 +1409,12 @@ void runHome() {
         drawHome(sel);
         char c = waitCh();
         if (c==KUP)   { if(sel>0) sel--; }
-        if (c==KDOWN) { if(sel<2) sel++; }
+        if (c==KDOWN) { if(sel<3) sel++; }
         if (c=='\r')  {
             if (sel==0) runWifiMenu();
             if (sel==1) runProfileList();
             if (sel==2) runSettings();
+            if (sel==3) runQuit();
         }
     }
 }
@@ -2102,6 +2122,10 @@ void setup() {
       Serial.println("  Check connections and power!");
       while (1) delay(1000);
     }
+
+    pinMode(4, OUTPUT);
+    digitalWrite(4, HIGH);   // GPIO4=LCD's backlight ON
+    
     externalDisplay.setRotation(3);
     externalDisplay.setColorDepth(16);  // RGB565 native for ILI9341
     externalDisplay.fillScreen(C_BG);
