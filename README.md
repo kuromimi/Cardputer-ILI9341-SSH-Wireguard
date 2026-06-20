@@ -6,7 +6,7 @@ SSH client on Cardputer-Adv with 2.8" ILI9341 LCD panel (320x240).
 
 This project is based on:
 - Blaž Pivk [M5-SSH-Wireguard](https://github.com/bpivk/M5-SSH-Wireguard)
-- AndyAi [LI9341(320x240) LCD support](https://github.com/AndyAiCardputer/zx-spectrum-cardputer-ili9341)
+- AndyAi [ILI9341(320x240) LCD support](https://github.com/AndyAiCardputer/zx-spectrum-cardputer-ili9341)
 
 ![Version](https://img.shields.io/badge/version-1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-ESP32--S3-green)
