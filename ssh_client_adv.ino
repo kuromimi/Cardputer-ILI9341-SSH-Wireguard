@@ -635,6 +635,7 @@ String typeText(const char* title, const char* prompt,
 // ═══════════════════════════════════════════════════════════════════════════════
 
 void loadSettings() {
+    lcd_quiesce();
     File f = SD.open(P_SETT); if (!f) return;
     while (f.available()) {
         String ln = f.readStringUntil('\n'); ln.trim();
@@ -659,6 +660,7 @@ void loadSettings() {
 }
 
 void saveSettings() {
+    lcd_quiesce();
     SD.remove(P_SETT);
     File f = SD.open(P_SETT, FILE_WRITE); if (!f) return;
     f.printf("screen_timeout=%d\nssh_timeout=%d\nwifi_timeout=%d\n",
@@ -702,6 +704,7 @@ bool parseProf(File& f, Profile& p) {
 
 void loadProfiles() {
     g_profCnt = 0;
+    lcd_quiesce();
     File dir = SD.open("/SSHAdv");
     if (!dir || !dir.isDirectory()) return;
     File e;
@@ -714,6 +717,7 @@ void loadProfiles() {
 }
 
 void saveProf(const Profile& p) {
+    lcd_quiesce();
     SD.remove(profPath(p.name).c_str());
     File f = SD.open(profPath(p.name).c_str(), FILE_WRITE); if (!f) return;
     f.printf("name=%s\nhost=%s\nuser=%s\npass=%s\nport=%d\n",
@@ -724,6 +728,7 @@ void saveProf(const Profile& p) {
 }
 
 void deleteProf(int idx) {
+    lcd_quiesce();
     SD.remove(profPath(g_prof[idx].name).c_str());
     for (int i=idx; i<g_profCnt-1; i++) g_prof[i]=g_prof[i+1];
     g_profCnt--;
@@ -731,12 +736,14 @@ void deleteProf(int idx) {
 }
 
 void saveWifi() {
+    lcd_quiesce();
     SD.remove(P_WIFI);
     File f = SD.open(P_WIFI, FILE_WRITE); if (!f) return;
     f.println(g_ssid); f.print(g_wpass); f.close();
 }
 
 bool loadWifi() {
+    lcd_quiesce();
     File f = SD.open(P_WIFI); if (!f) return false;
     String s = f.readStringUntil('\n'); s.trim();
     String p = f.readStringUntil('\n'); p.trim();
@@ -747,6 +754,7 @@ bool loadWifi() {
 }
 
 void loadUsers() {
+    lcd_quiesce();
     g_userCnt = 0;
     File f = SD.open(P_USERS); if (!f) return;
     while (f.available() && g_userCnt < MAX_USR) {
@@ -758,6 +766,7 @@ void loadUsers() {
 
 void addUser(const char* u) {
     for (int i=0; i<g_userCnt; i++) if (strcmp(g_users[i],u)==0) return;
+    lcd_quiesce();
     File f = SD.open(P_USERS, FILE_APPEND); if (!f) return;
     f.println(u); f.close();
     if (g_userCnt < MAX_USR) strncpy(g_users[g_userCnt++], u, 31);
@@ -769,6 +778,7 @@ void addUser(const char* u) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 bool parseWGFile(const char* path, Profile& p) {
+    lcd_quiesce();
     File f = SD.open(path); if (!f) return false;
     while (f.available()) {
         String ln = f.readStringUntil('\n'); ln.trim();
@@ -789,6 +799,7 @@ bool pickWGConf(Profile& p) {
     static char names[MAX_WGF][40];
     static const char* ptrs[MAX_WGF];
     int n = 0;
+    lcd_quiesce();
     File dir = SD.open(P_WG);
     if (dir && dir.isDirectory()) {
         File e;
@@ -972,8 +983,10 @@ void editProfile(int idx) {
     }
 
     if (yesNo(p.name,"Save profile?",true)) {
-        if (!isNew && strcmp(g_prof[idx].name,p.name)!=0)
+        if (!isNew && strcmp(g_prof[idx].name,p.name)!=0) {
+            lcd_quiesce();
             SD.remove(profPath(g_prof[idx].name).c_str());
+        }
         saveProf(p);
         if (isNew) {
             if (g_profCnt<MAX_PROF) { g_prof[g_profCnt++]=p; g_profSel=g_profCnt-1; }
@@ -2132,6 +2145,7 @@ void setup() {
     delay(400);
 
     if (sdOk) {
+        lcd_quiesce();
         if (!SD.exists("/SSHAdv"))    SD.mkdir("/SSHAdv");
         if (!SD.exists(P_WG))        SD.mkdir(P_WG);
         loadProfiles();
