@@ -351,19 +351,20 @@ bool wgStart(const Profile& p, const char* fp) {
     String ep = p.wg_endpoint;
     int co = ep.lastIndexOf(':');
     if (co < 0) { bprint("Bad WG endpoint!", C_ERR); delay(2000); return false; }
-    configTime(0, 0, "pool.ntp.org", "time.google.com"); delay(800);
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
 
-    bprint("wait time",C_OK);
+    bprintf(C_OK,"Wait NTP ready");
     time_t now = 0;
-    while (now < 1000000000L) {  // 2001年以降なら同期済み
+    while (now < 1000000000L) { // check time is newer than 2001 year
         time(&now);
         delay(500);
         externalDisplay.print('.');    
     }
+    externalDisplay.print("\n");
     struct tm *tm_info = localtime(&now);
     char tbuf[32];
     strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", tm_info);
-    bprintf(C_DIM, "time: %s", tbuf);   
+    bprintf(C_DIM, "time:%s", tbuf);   
 
     g_prevDefaultNetif = netif_default;
     g_wg = new WireGuard();
