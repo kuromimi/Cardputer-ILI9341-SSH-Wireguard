@@ -353,28 +353,18 @@ bool wgStart(const Profile& p, const char* fp) {
     if (co < 0) { bprint("Bad WG endpoint!", C_ERR); delay(2000); return false; }
     configTime(0, 0, "pool.ntp.org", "time.google.com"); delay(800);
 
-    IPAddress endpoint_ip;
-    if (!endpoint_ip.fromString(ep.substring(0, co))) {
-        String domain_name = ep.substring(0, co);
-        int retry = 0;
-        Serial.println(domain_name.c_str());
-        while (!WiFi.hostByName(domain_name.c_str(), endpoint_ip) && retry < 10) {
-            delay(500);
-            retry++;
-        }
-        if (retry >= 10) {
-            bprintf(C_ERR, "DNS Lookup failed:%s", domain_name);
-            delay(2000);
-            return false;
-        }
+    bprint("wait time",C_OK);
+    time_t now = 0;
+    while (now < 1000000000L) {  // 2001年以降なら同期済み
+        time(&now);
+        delay(500);
+        externalDisplay.print('.');    
     }
-    int endpoint_port = ep.substring(co + 1).toInt();
-    WiFiUDP udp;
-    udp.beginPacket(endpoint_ip, endpoint_port);
-    udp.write(0);
-    udp.endPacket();
-    udp.stop();
-    
+    struct tm *tm_info = localtime(&now);
+    char tbuf[32];
+    strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", tm_info);
+    bprintf(C_DIM, "time: %s", tbuf);   
+
     g_prevDefaultNetif = netif_default;
     g_wg = new WireGuard();
     g_wg->begin(tun, p.wg_privkey, ep.substring(0, co).c_str(),
@@ -383,6 +373,9 @@ bool wgStart(const Profile& p, const char* fp) {
     g_wgTcpUsed = false;
     strncpy(g_wgFingerprint, fp, sizeof(g_wgFingerprint)-1);
     bprint("WG up.", C_OK);
+
+    delay(1000);    // this delay is important for waiting netif ready
+
     return true;
 }
 
