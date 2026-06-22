@@ -101,8 +101,8 @@ public:
 		auto l = light.config();
 		l.pin_bl = 4;          // GPIO4
 		l.invert = false;      // HIGH = ON
-		l.freq = 12000;        // 10 ~ 20kHz
-		l.pwm_channel = 7;
+		l.freq = 1000;         // 1kHz
+		l.pwm_channel = 1;
 		light.config(l);
 		panel.setLight(&light);
 
