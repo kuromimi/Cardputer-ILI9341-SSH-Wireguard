@@ -45,7 +45,6 @@ This project is based on:
 - For build code and SSH/Wireguard configuration, please refer to the original [M5-SSH-Wireguard](https://github.com/bpivk/M5-SSH-Wireguard)
 - LCD's backlignt is controlled by BL-EN signal (3.3V), which is routed to GPIO4 as configured for PWM.
 - AndyAi's LCD cover is for panels without a touch panel. I redesigned the cover because I use a LCD unit having touch panel. I removed the pin header from LCD's PCB and wired them directly. Attaching the STL file for reference. The thickness of LCD panel including the SD card slot is designed to be 8.8mm.
-- The first WG connection may result in "Host is unreachable" error. In that case, please retry connection. If it keeps failing, try power-OFF-ON cycle (This problem should be fixed in the future)
 - I just merged two guys' deliverables. Can't enough to say thank to Blaž Pivk and AndyAi !!!
 
 ## License
