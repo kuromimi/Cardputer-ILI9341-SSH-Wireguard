@@ -1725,12 +1725,12 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                         if (hid == 0x37) ssh_channel_write(ch, "\x1b[B", 3);
                         if (hid == 0x36) ssh_channel_write(ch, "\x1b[D", 3);
                         if (hid == 0x38) ssh_channel_write(ch, "\x1b[C", 3);
+                        if (hid == 0x35) { const char e = 0x1B; ssh_channel_write(ch, &e, 1); }
                     }
                 } else if (isCtrl()) {
                     for (auto hid : st.hid_keys) {
                         char a = hidToAlpha(hid);
                         if (a) { char cc = a - 'a' + 1; ssh_channel_write(ch, &cc, 1); }
-                        if (hid == 0x2F) { const char e = 0x1B; ssh_channel_write(ch, &e, 1); }
                     }
                 } else {
                     for (auto c2 : st.word) {
