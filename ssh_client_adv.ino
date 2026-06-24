@@ -36,6 +36,9 @@
 #include <libssh/libssh.h>
 #include "lwip/sockets.h"
 
+#define TERM_COLS 40
+#define TERM_ROWS 14
+
 // ── Display ────────────────────────────────────────────────────────────────────
 #define DW       240
 #define DH       135
@@ -206,7 +209,7 @@ void drawGearIcon(int cx, int cy, uint16_t col);
 void touchActivity() {
     g_lastAct = millis();
     if (g_dimmed) {
-        M5Cardputer.Display.setBrightness(128);
+        M5Cardputer.Display.setBrightness(g_cfg.brightness);
         g_dimmed = false;
     }
 }
@@ -334,7 +337,21 @@ bool wgStart(const Profile& p, const char* fp) {
     String ep = p.wg_endpoint;
     int co = ep.lastIndexOf(':');
     if (co < 0) { bprint("Bad WG endpoint!", C_ERR); delay(2000); return false; }
-    configTime(0, 0, "pool.ntp.org", "time.google.com"); delay(800);
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
+
+    bprintf(C_OK,"Wait NTP ready");
+    time_t now = 0;
+    while (now < 1000000000L) { // check time is newer than 2001 year
+        time(&now);
+        delay(500);
+        M5Cardputer.Display.print('.');    
+    }
+    M5Cardputer.Display.print("\n");
+    struct tm *tm_info = localtime(&now);
+    char tbuf[32];
+    strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", tm_info);
+    bprintf(C_DIM, "time:%s", tbuf);   
+
     g_prevDefaultNetif = netif_default;
     g_wg = new WireGuard();
     g_wg->begin(tun, p.wg_privkey, ep.substring(0, co).c_str(),
@@ -343,6 +360,9 @@ bool wgStart(const Profile& p, const char* fp) {
     g_wgTcpUsed = false;
     strncpy(g_wgFingerprint, fp, sizeof(g_wgFingerprint)-1);
     bprint("WG up.", C_OK);
+
+    delay(1000);    // this delay is important for waiting netif ready
+
     return true;
 }
 
@@ -1409,8 +1429,8 @@ static void sshConnectTask(void* arg) {
     }
 
     ctx->ch = ssh_channel_new(ctx->sess);
-    int termCols = (g_cfg.termFontSize == 2) ? 20 : 40;
-    int termRows = (g_cfg.termFontSize == 2) ?  7 : 14;
+    int termCols = (g_cfg.termFontSize == 2) ? TERM_COLS/2 : TERM_COLS;
+    int termRows = (g_cfg.termFontSize == 2) ? TERM_ROWS/2 : TERM_ROWS;
 
     if (!ctx->ch ||
         ssh_channel_open_session(ctx->ch) != SSH_OK ||
@@ -1562,8 +1582,8 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
     const int TOP  = TITLEH + 2;
     const int BOT  = DH - HINTH;
 
-    const int MAXCOLS = 40;
-    const int MAXROWS = 14;
+    const int MAXCOLS = TERM_COLS;
+    const int MAXROWS = TERM_ROWS;
 
     static TCell tbuf[2][MAXROWS][MAXCOLS];
     static int   tcx, tcy;
@@ -1571,10 +1591,12 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
     static int   tCols, tRows;
     static int   scrollTop, scrollBot;
     static bool  altScreen;
+    static bool cursorVisible = true;
+    static int  lastCursorX = -1, lastCursorY = -1;
 
     auto lh       = [&]() { return g_cfg.termFontSize * 8; };
-    auto termCols = [&]() { return (g_cfg.termFontSize == 2) ? 20 : 40; };
-    auto termRows = [&]() { return (g_cfg.termFontSize == 2) ?  7 : 14; };
+    auto termCols = [&]() { return (g_cfg.termFontSize == 2) ? TERM_COLS/2 : TERM_COLS; };
+    auto termRows = [&]() { return (g_cfg.termFontSize == 2) ? TERM_ROWS/2 : TERM_ROWS; };
     auto cw       = [&]() { return g_cfg.termFontSize * 6; };
     auto rowY     = [&](int r) { return TOP + r * lh(); };
     auto activeBuf= [&]() -> TCell(*)[MAXCOLS] { return tbuf[altScreen ? 1 : 0]; };
@@ -1616,16 +1638,20 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
         M5Cardputer.Display.setTextColor(C_FG, C_BG);
     };
 
+    auto redrawRegion = [&](int rowFrom, int rowTo) {
+        for (int r = rowFrom; r <= rowTo; r++)
+            drawRow(r);
+    };
+
     auto scrollRegionUp = [&](int n2, int fromRow = -1) {
         if (fromRow < 0) fromRow = scrollTop;
         for (int rep = 0; rep < n2; rep++) {
             for (int r = fromRow; r < scrollBot; r++)
                 memcpy(activeBuf()[r], activeBuf()[r+1], sizeof(TCell)*MAXCOLS);
-            memset(activeBuf()[scrollBot], 0, sizeof(TCell)*MAXCOLS);
             for (int c2 = 0; c2 < tCols; c2++)
                 activeBuf()[scrollBot][c2] = {0, curFg, curBg, false};
         }
-        redrawAll();
+        redrawRegion(fromRow, scrollBot);
     };
 
     auto scrollRegionDown = [&](int n2, int fromRow = -1) {
@@ -1633,11 +1659,10 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
         for (int rep = 0; rep < n2; rep++) {
             for (int r = scrollBot; r > fromRow; r--)
                 memcpy(activeBuf()[r], activeBuf()[r-1], sizeof(TCell)*MAXCOLS);
-            memset(activeBuf()[fromRow], 0, sizeof(TCell)*MAXCOLS);
             for (int c2 = 0; c2 < tCols; c2++)
                 activeBuf()[fromRow][c2] = {0, curFg, curBg, false};
         }
-        redrawAll();
+        redrawRegion(fromRow, scrollBot);
     };
 
     auto clearBuf = [&](int bufIdx) {
@@ -1655,6 +1680,28 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
         activeBuf()[tcy][tcx] = {c2, curFg, curBg, curBold};
         drawCell(tcx, tcy);
         tcx++;
+    };
+
+    auto eraseCursor = [&]() {
+        if (lastCursorX >= 0 && lastCursorY >= 0) {
+            drawCell(lastCursorX, lastCursorY);
+            lastCursorX = lastCursorY = -1;
+        }
+    };
+
+    auto drawCursor = [&]() {
+        if (!cursorVisible) return;
+        if (tcx >= tCols || tcy >= tRows) return;
+        eraseCursor();
+        M5Cardputer.Display.fillRect(tcx * cw(), rowY(tcy), cw(), lh(), C_FG);
+        auto& cell = activeBuf()[tcy][tcx];
+        if (cell.ch && cell.ch != ' ') {
+            M5Cardputer.Display.setTextColor(curBg, C_FG);
+            M5Cardputer.Display.setCursor(tcx * cw(), rowY(tcy));
+            M5Cardputer.Display.write(cell.ch);
+        }
+        lastCursorX = tcx;
+        lastCursorY = tcy;
     };
 
     // Init
@@ -1723,8 +1770,8 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                         }
                         if (hid == 0x33) ssh_channel_write(ch, "\x1b[A", 3);
                         if (hid == 0x37) ssh_channel_write(ch, "\x1b[B", 3);
-                        if (hid == 0x36) ssh_channel_write(ch, "\x1b[D", 3);
                         if (hid == 0x38) ssh_channel_write(ch, "\x1b[C", 3);
+                        if (hid == 0x36) ssh_channel_write(ch, "\x1b[D", 3);
                         if (hid == 0x35) { const char e = 0x1B; ssh_channel_write(ch, &e, 1); }
                     }
                 } else if (isCtrl()) {
@@ -1770,15 +1817,17 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                         char* s = csiBuf;
                         while (*s && pc < 8) {
                             if (*s >= '0' && *s <= '9') {
-                                p[pc] = atoi(s);
-                                while (*s >= '0' && *s <= '9') s++;
-                                pc++;
+                                if (p[pc] < 0) p[pc] = 0;
+                                p[pc] = p[pc] * 10 + (*s - '0');
+                                s++;
                             } else if (*s == ';') {
                                 if (p[pc] < 0) p[pc] = 0;
                                 pc++;
                                 s++;
                             } else s++;
                         }
+                        if (p[pc] >= 0) pc++; // count the last number
+
                         auto P1 = [&](int def) { return (p[0] < 0) ? def : p[0]; };
                         auto P2 = [&](int def) { return (p[1] < 0) ? def : p[1]; };
 
@@ -1787,6 +1836,8 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                                 bool set = (c2 == 'h');
                                 int mode = P1(0);
                                 if (mode == 25) {
+                                  cursorVisible = set;
+                                  if (!set) eraseCursor();
                                 } else if (mode == 1049 || mode == 47 || mode == 1047) {
                                     if (set && !altScreen) {
                                         altScreen = true;
@@ -1947,8 +1998,13 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                     continue;
                 }
                 if (c2 == 0x08) {
-                    if(tcx>0){tcx--; activeBuf()[tcy][tcx]={0,curFg,curBg,false};
-                    M5Cardputer.Display.fillRect(tcx*cw(),rowY(tcy),cw(),lh(),curBg);}
+                    if(tcx>0){
+                        tcx--;
+                        if(!altScreen) {
+                            activeBuf()[tcy][tcx]={0,curFg,curBg,false};
+                            M5Cardputer.Display.fillRect(tcx*cw(),rowY(tcy),cw(),lh(),curBg);
+                        }
+                    }
                     continue;
                 }
                 if (c2 == 0x7F) {
@@ -2007,6 +2063,7 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                 putChar((char)c2);
             }
         }
+        if (n > 0) drawCursor();        
         if (n < 0 || ssh_channel_is_closed(ch)) break;
     }
     done:;
