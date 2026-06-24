@@ -27,7 +27,6 @@
  */
 
 #include <WiFi.h>
-#include <WiFiUdp.h>
 #include <M5Cardputer.h>
 #include <WireGuard-ESP32.h>
 #include <SD.h>
@@ -1636,6 +1635,8 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
     static int   tCols, tRows;
     static int   scrollTop, scrollBot;
     static bool  altScreen;
+    static bool cursorVisible = true;
+    static int  lastCursorX = -1, lastCursorY = -1;
 
     auto lh       = [&]() { return g_cfg.termFontSize * 8; };
     auto termCols = [&]() { return (g_cfg.termFontSize == 2) ? TERM_COLS/2 : TERM_COLS; };
@@ -1732,6 +1733,29 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
         tcx++;
     };
 
+    auto eraseCursor = [&]() {
+        if (lastCursorX >= 0 && lastCursorY >= 0) {
+            drawCell(lastCursorX, lastCursorY);
+            lastCursorX = lastCursorY = -1;
+        }
+    };
+    
+    auto drawCursor = [&]() {
+        if (!cursorVisible) return;
+        if (tcx >= tCols || tcy >= tRows) return;
+        eraseCursor();
+        externalDisplay.fillRect(tcx * cw(), rowY(tcy), cw(), lh(), C_FG);
+        auto& cell = activeBuf()[tcy][tcx];
+        if (cell.ch && cell.ch != ' ') {
+            externalDisplay.setTextColor(curBg, C_FG);
+            externalDisplay.setCursor(tcx * cw(), rowY(tcy));
+            externalDisplay.write(cell.ch);
+        }
+        lastCursorX = tcx;
+        lastCursorY = tcy;
+    };
+
+
     // Init
     tCols = termCols(); tRows = termRows();
     scrollTop = 0; scrollBot = tRows - 1;
@@ -1798,14 +1822,14 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                         }
                         if (hid == 0x33) ssh_channel_write(ch, "\x1b[A", 3);
                         if (hid == 0x37) ssh_channel_write(ch, "\x1b[B", 3);
-                        if (hid == 0x36) ssh_channel_write(ch, "\x1b[D", 3);
                         if (hid == 0x38) ssh_channel_write(ch, "\x1b[C", 3);
+                        if (hid == 0x36) ssh_channel_write(ch, "\x1b[D", 3);
+                        if (hid == 0x35) { const char e = 0x1B; ssh_channel_write(ch, &e, 1); }
                     }
                 } else if (isCtrl()) {
                     for (auto hid : st.hid_keys) {
                         char a = hidToAlpha(hid);
                         if (a) { char cc = a - 'a' + 1; ssh_channel_write(ch, &cc, 1); }
-                        if (hid == 0x2F) { const char e = 0x1B; ssh_channel_write(ch, &e, 1); }
                     }
                 } else {
                     for (auto c2 : st.word) {
@@ -1828,7 +1852,6 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
             sshLastActivity = millis();
             for (int i = 0; i < n; i++) {
                 uint8_t c2 = rbuf[i];
-
                 if (inOSC) {
                     if (c2 == 0x07 || c2 == 0x9C) inOSC = false;
                     else if (c2 == 0x1B) { inOSC = false; inEsc = true; }
@@ -1839,21 +1862,22 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                     if (c2 >= 0x40 && c2 <= 0x7E) {
                         csiBuf[csiLen] = '\0';
                         inCSI = false;
-
                         int p[8]; int pc = 0;
                         memset(p, -1, sizeof(p));
                         char* s = csiBuf;
                         while (*s && pc < 8) {
                             if (*s >= '0' && *s <= '9') {
-                                p[pc] = atoi(s);
-                                while (*s >= '0' && *s <= '9') s++;
-                                pc++;
+                                if (p[pc] < 0) p[pc] = 0;
+                                p[pc] = p[pc] * 10 + (*s - '0');
+                                s++;
                             } else if (*s == ';') {
                                 if (p[pc] < 0) p[pc] = 0;
                                 pc++;
                                 s++;
                             } else s++;
                         }
+                        if (p[pc] >= 0) pc++; // count the last number
+
                         auto P1 = [&](int def) { return (p[0] < 0) ? def : p[0]; };
                         auto P2 = [&](int def) { return (p[1] < 0) ? def : p[1]; };
 
@@ -1862,6 +1886,8 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                                 bool set = (c2 == 'h');
                                 int mode = P1(0);
                                 if (mode == 25) {
+                                  cursorVisible = set;
+                                  if (!set) eraseCursor();
                                 } else if (mode == 1049 || mode == 47 || mode == 1047) {
                                     if (set && !altScreen) {
                                         altScreen = true;
@@ -2022,8 +2048,13 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                     continue;
                 }
                 if (c2 == 0x08) {
-                    if(tcx>0){tcx--; activeBuf()[tcy][tcx]={0,curFg,curBg,false};
-                    externalDisplay.fillRect(tcx*cw(),rowY(tcy),cw(),lh(),curBg);}
+                    if(tcx>0){
+                        tcx--;
+                        if(!altScreen) {
+                            activeBuf()[tcy][tcx]={0,curFg,curBg,false};
+                            externalDisplay.fillRect(tcx*cw(),rowY(tcy),cw(),lh(),curBg);
+                        }
+                    }
                     continue;
                 }
                 if (c2 == 0x7F) {
@@ -2082,6 +2113,7 @@ void runSSHTerm(ssh_session sess, ssh_channel ch) {
                 putChar((char)c2);
             }
         }
+        if (n > 0) drawCursor();        
         if (n < 0 || ssh_channel_is_closed(ch)) break;
     }
     done:;
